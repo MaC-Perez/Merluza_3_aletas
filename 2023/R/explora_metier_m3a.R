@@ -84,12 +84,13 @@ hist( log(dat.ope$catch), nbb, main='log Catch')
 hist( (dat.ope$HA), nbb, main='Effort')
 hist( log(dat.ope$HA), nbb, main='log Effort')
 
+
 #write.csv(data, file = "data_m3a_arrastre_2022.csv", row.names = T)
 
 ## --------------- cpue x fishery ----------------------------
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400018")] = "UNION SUR 1"
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "940034")] = "UNION SUR 2"
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400017")] = "UNZEN MARU"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400018")] = "UNION SUR 1"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "940034")] = "UNION SUR 2"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400017")] = "UNZEN MARU"
 
 a <- ggplot( dat.ope, aes( x=catch, y = (after_stat(count))/sum(after_stat(count))) )
 a <- a + geom_histogram(aes(), bins=25, fill='white', color="black" ) 
@@ -131,6 +132,8 @@ a
 #DATOS LISTOS
 ########
 
+library(tidyverse)
+library(reshape2)
 data <- read.csv('data_m3a_arrastre_2022.csv', header=T, sep=',')
 data <- select(data, -X)
 names(data)
@@ -143,9 +146,9 @@ dat.esp <- dat.esp %>% mutate(total = rowSums(.,na.rm=TRUE))
 names(dat.esp)
 
 #library(reshape2)
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400018")] = "UNION SUR 1"
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "940034")] = "UNION SUR 2"
-dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400017")] = "UNZEN MARU"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400018")] = "UNION SUR 1"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "940034")] = "UNION SUR 2"
+#dat.ope$COD_BARCO[which(dat.ope$COD_BARCO == "400017")] = "UNZEN MARU"
 
 
 catch.zona    <- melt(dcast(dat.ope, year + COD_BARCO ~ zona, median, value.var=c('cpue')), id=c(1,2))
@@ -175,7 +178,7 @@ especies <- select( dat.esp, -total )
 names(especies)
 especies <- especies[,!!colSums( especies[grep( 'X', names(especies) )] )]  # Removing all columns summing to zero
 
-esp.sub   <- select(filter(cbind(year=dat.ope$year, especies), year>=1989), -year)
+esp.sub   <- select(filter(cbind(year=dat.ope$year, especies), year>=1997), -year)
 dim(esp.sub)
 # 4785  25
 #8192   28
@@ -352,7 +355,93 @@ pie
 metiers <- read.csv('cluster_arrastre.csv')
 
 data$metier <- metiers[,2]
+ope <- cbind(dat.ope, metier=metiers[,2])
+
 names(data)
+
+library(dplyr)
+library(lattice)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(lubridate)
+library(psych)
+
+
+catch.zona    <- melt(dcast(ope, year + mes  ~ metier , geometric.mean, value.var=c('cpue')), id=c(1,2))
+catch.zona$ts <- make_datetime(catch.zona$year, catch.zona$mes)
+x11()
+
+a <- ggplot( catch.zona, aes( x=ts, y=value, color=as.factor(variable) ) )
+a <- a + geom_line() 
+a <- a + facet_wrap(~year, scale='free_x')
+a <- a + theme_igray() + scale_color_discrete(name="") + scale_shape_discrete(name="")
+a <- a + scale_x_datetime(breaks = date_breaks("60 days"), labels = date_format("%m"))
+a
+
+
+grp.1 <- group_by(data, year, mes) 
+ff.1  <- summarise(grp.1,
+                   TOTAL  = n(),
+                   catch  = sum(Merluza_3_a/1000, na.rm = TRUE),
+                   effort = sum(HA, na.rm = TRUE),
+                   cpue   = mean(cpue, na.rm = TRUE),
+                   cpue.m = median(cpue, na.rm = TRUE),
+                   cpue.r = catch/effort
+)
+
+ff.1
+ff.1$ts <- make_datetime(ff.1$year, ff.1$mes)
+ff.1.m  <- melt(ff.1, id.vars = c('year','mes','ts', 'TOTAL'))
+
+fig.1 <- ggplot(ff.1.m, aes(x = mes, y = value)) +
+  #fig.1 <- ggplot(filter(ff.1.m, mes!=8), aes(x = mes, y = value)) +
+  geom_point(aes(size=TOTAL, colour=as.factor(year)), alpha=I(0.35)) + geom_line(aes(colour=as.factor(year))) +
+  facet_wrap(~variable, ncol = 3, scales = 'free') + theme_minimal(14) + 
+  labs(x = "Mes", y = "Valor") + ggtitle("Captura / Esfuerzo / CPUE")
+
+fig.1
+
+grp.2 <- group_by(data, year) 
+ff.2  <- summarise(grp.2,
+                   TOTAL  = n(),
+                   catch  = sum(Merluza_3_a/1000, na.rm = TRUE),
+                   effort = sum(HA, na.rm = TRUE),
+                   cpue   = mean(cpue, na.rm = TRUE),
+                   cpue.m = median(cpue, na.rm = TRUE),
+                   cpue.r = catch/effort
+)
+
+
+ff.2.m  <- melt(ff.2, id.vars = c('year','TOTAL'))
+
+fig.2 <- ggplot(ff.2.m, aes(x = year, y = value)) +
+  geom_point(aes(size=as.factor(TOTAL)), alpha=I(0.35)) + geom_line() +
+  facet_wrap(~variable, ncol = 3, scales = 'free') + theme_minimal(14) + 
+  labs(x = "Mes", y = "Valor") + ggtitle("Captura / Esfuerzo / CPUE")
+
+fig.2
+
+
+grp.3 <- group_by(ope, year, metier) 
+ff.3  <- summarise(grp.3,
+                   TOTAL  = n(),
+                   catch  = sum(Merluza_3_a/1000, na.rm = TRUE),
+                   effort = sum(HA, na.rm = TRUE),
+                   cpue   = mean(cpue, na.rm = TRUE),
+                   cpue.m = median(cpue, na.rm = TRUE),
+                   cpue.r = catch/effort
+)
+
+ff.3.m  <- melt(ff.3, id.vars = c('year','metier','TOTAL'))
+
+fig.3 <- ggplot(ff.3.m, aes(x = year, y = value)) +
+  geom_point(aes(size=TOTAL, colour=as.factor(metier)), alpha=I(0.35)) + geom_line(aes(colour=as.factor(metier))) +
+  facet_wrap(~variable, ncol = 3, scales = 'free') + theme_minimal(14) + 
+  labs(x = "A?o", y = "Valor") + ggtitle("Captura / Esfuerzo / CPUE")
+
+fig.3
+
 
 
 library(lmtest)
@@ -372,10 +461,11 @@ data$metier<-as.factor(data$metier)
 summary(data)
 
 data_n0 <- subset(data,log(data$cpue) > 0)
-mod6 <- glm(log(cpue) ~ year + zona + metier + I(COD_BARCO:mes), data = data_n0, family="gaussian", na.action = na.exclude)
+mod6 <- glm(log(cpue) ~ year +  metier + I(COD_BARCO:mes), data = data_n0, family="gaussian", na.action = na.exclude)
 
 summary(mod6)
 anova(mod6)
 PseudoR(mod6)
 coeftest(mod6)
-
+mod6
+drop1(mod6, test="F")
